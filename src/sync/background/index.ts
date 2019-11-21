@@ -36,6 +36,7 @@ export default class SyncBackground extends SyncService {
         getSharedSyncLog: () => Promise<SharedSyncLog>
         browserAPIs: Pick<Browser, 'storage'>
         appVersion: string
+        pageFetchBacklog?: PageFetchBacklogBackground
     }) {
         super({
             ...options,
@@ -50,6 +51,40 @@ export default class SyncBackground extends SyncService {
             settingStore: new MemexExtSyncSettingStore(options),
             productType: 'ext',
             productVersion: options.appVersion,
+        })
+
+        this.continuousSync = new MemexExtContinuousSync({
+            frequencyInMs: INCREMENTAL_SYNC_FREQUENCY,
+            auth: {
+                getUserId: async () => {
+                    const user = await options.auth.getCurrentUser()
+                    return user && user.id
+                },
+            },
+            storageManager: options.storageManager,
+            clientSyncLog: this.clientSyncLog,
+            getSharedSyncLog: options.getSharedSyncLog,
+            secretStore: this.secretStore,
+            settingStore: this.settingStore,
+            productType: 'ext',
+            productVersion: options.appVersion,
+            pageFetchBacklog: options.pageFetchBacklog,
+            toggleSyncLogging: (
+                enabled: boolean,
+                deviceId?: string | number,
+            ) => {
+                if (this.syncLoggingMiddleware) {
+                    if (enabled) {
+                        this.syncLoggingMiddleware.enable(deviceId!)
+                    } else {
+                        this.syncLoggingMiddleware.disable()
+                    }
+                } else {
+                    throw new Error(
+                        `Tried to toggle sync logging before logging middleware was created`,
+                    )
+                }
+            },
         })
 
         const bound = <Target, Key extends keyof Target>(
